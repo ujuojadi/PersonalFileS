@@ -1,3 +1,4 @@
+//1
 package main
 
 import (
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"bytes"
 	"errors"
+
 	
 )
 
@@ -87,11 +89,9 @@ func (s *Store) Has(key string)bool {
 	pathKey := s.PathTransformFunc(key)
 	fullPathWithRoot :=fmt.Sprintf("%s/%s", s.Root, pathKey.FullPath())
 
-  _, err :=os.Stat(fullPathWithRoot)
-	if errors.Is(err, os.ErrNotExist){
-		return false
-	}
-	    return true
+  _, err :=os.Stat(fullPathWithRoot) 
+  return  !errors.Is(err, os.ErrNotExist)
+		
 	// if os.IsNotExist(err) {
     //   return false
     // }
@@ -99,6 +99,10 @@ func (s *Store) Has(key string)bool {
 
 	
 
+}
+
+func (s *Store) Clear() error {
+	return os.RemoveAll(s.Root)
 }
 
 
@@ -123,7 +127,9 @@ func(s *Store) Delete(key string)error {
 	 }
 
 	
-
+func (s *Store) Write(key string, r io.Reader) (int64, error) {
+	return s.writeStream(key, r)
+}
 
 func (s *Store) Read(key string) (io.Reader, error){
 	f, err :=s.readStream(key)
@@ -145,27 +151,36 @@ func (s *Store) readStream(key string) (io.ReadCloser, error) {
 	return os.Open(fullPathWithRoot)
 }
 
-func (s *Store) writeStream(key string, r io.Reader) error {
+func (s *Store) writeStream(key string, r io.Reader)(int64,  error ){
 	pathKey := s.PathTransformFunc(key)
-    pathNameWithRoot :=fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
+	// safePathName := strings.ReplaceAll(pathKey.PathName, ":", "_")
+    // pathNameWithRoot :=fmt.Sprintf("%s/%s", s.Root, safePathName)
+	rawPath := fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
+    pathNameWithRoot := strings.ReplaceAll(rawPath, ":", "_") 
+	fmt.Println("Creating directory:", pathNameWithRoot)
+
 	if err := os.MkdirAll(pathNameWithRoot, os.ModePerm); err != nil {
-		return err
+		return 0,  err
 	}
 
-	fullPathWithRoot :=fmt.Sprintf("%s/%s", s.Root, pathKey.FullPath())
+    // sanitize filename as well
+    safeFileName := strings.ReplaceAll(pathKey.Filename, ":", "_")
+	// fullPathWithRoot :=fmt.Sprintf("%s/%s", s.Root, pathKey.FullPath())
+	fullPathWithRoot := fmt.Sprintf("%s/%s", pathNameWithRoot, safeFileName)
+
 
 	f, err := os.Create(fullPathWithRoot)
 	if err != nil {
-		return err
+		return 0,  err
 	}
 	defer f.Close()
 
 	n, err := io.Copy(f, r)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	log.Printf("written (%d) bytes to disk: %s", n, fullPathWithRoot)
-	return nil
+	// log.Printf("written (%d) bytes to disk: %s", n, fullPathWithRoot)
+	return n,  nil
 }
 
